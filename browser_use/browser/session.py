@@ -3195,7 +3195,7 @@ class BrowserSession(BaseModel):
 	# --- DVD Screensaver Loading Animation Helper ---
 	async def _show_dvd_screensaver_loading_animation(self, page: Page) -> None:
 		"""
-		Shows a simple loading screen with WhiskyBA branding.
+		Shows a simple loading screen with Vector AI Agent branding.
 		This is used to visually indicate that the browser is setting up or waiting.
 		"""
 		if CONFIG.IS_IN_EVALS:
@@ -3206,7 +3206,7 @@ class BrowserSession(BaseModel):
 		# between opening the tab and showing the loading screen
 		await page.evaluate(
 			"""(browser_session_label) => {
-			const loading_title = `Starting WhiskyBA agent ${browser_session_label}...`;
+			const loading_title = `Starting Vector AI Agent ${browser_session_label}...`;
 			if (document.title === loading_title) {
 				return;      // already run on this tab, dont run again
 			}
@@ -3214,7 +3214,7 @@ class BrowserSession(BaseModel):
 
 			// Create the main overlay
 			const loadingOverlay = document.createElement('div');
-			loadingOverlay.id = 'whiskyba-loading-screen';
+			loadingOverlay.id = 'vectorai-loading-screen';
 			loadingOverlay.style.position = 'fixed';
 			loadingOverlay.style.top = '0';
 			loadingOverlay.style.left = '0';
@@ -3230,7 +3230,7 @@ class BrowserSession(BaseModel):
 
 			// Create the main title
 			const title = document.createElement('h1');
-			title.textContent = 'WhiskyBA';
+			title.textContent = 'Vector AI Agent';
 			title.style.fontSize = '4rem';
 			title.style.fontWeight = '700';
 			title.style.color = '#ffffff';
@@ -3263,11 +3263,11 @@ class BrowserSession(BaseModel):
 			// Add CSS for better styling
 			const style = document.createElement('style');
 			style.innerHTML = `
-				#whiskyba-loading-screen {
+				#vectorai-loading-screen {
 					user-select: none;
 					pointer-events: none;
 				}
-				#whiskyba-loading-screen * {
+				#vectorai-loading-screen * {
 					user-select: none;
 					pointer-events: none;
 				}
