@@ -3195,103 +3195,79 @@ class BrowserSession(BaseModel):
 	# --- DVD Screensaver Loading Animation Helper ---
 	async def _show_dvd_screensaver_loading_animation(self, page: Page) -> None:
 		"""
-		Injects a DVD screensaver-style bouncing logo loading animation overlay into the given Playwright Page.
+		Shows a simple loading screen with WhiskyBA branding.
 		This is used to visually indicate that the browser is setting up or waiting.
 		"""
 		if CONFIG.IS_IN_EVALS:
-			# dont bother wasting CPU showing animations during evals
+			# dont bother showing loading screen during evals
 			return
 
-		# we could enforce this, but maybe it's useful to be able to show it on other tabs?
-		# assert page.url == 'about:blank', 'DVD screensaver loading animation should only be shown on about:blank tabs'
-
 		# all in one JS function for speed, we want as few roundtrip CDP calls as possible
-		# between opening the tab and showing the animation
+		# between opening the tab and showing the loading screen
 		await page.evaluate(
 			"""(browser_session_label) => {
-			const animated_title = `Setting up #${browser_session_label}...`;
-			if (document.title === animated_title) {
+			const loading_title = `Starting WhiskyBA agent ${browser_session_label}...`;
+			if (document.title === loading_title) {
 				return;      // already run on this tab, dont run again
 			}
-			document.title = animated_title;
+			document.title = loading_title;
 
 			// Create the main overlay
 			const loadingOverlay = document.createElement('div');
-			loadingOverlay.id = 'pretty-loading-animation';
+			loadingOverlay.id = 'whiskyba-loading-screen';
 			loadingOverlay.style.position = 'fixed';
 			loadingOverlay.style.top = '0';
 			loadingOverlay.style.left = '0';
 			loadingOverlay.style.width = '100vw';
 			loadingOverlay.style.height = '100vh';
-			loadingOverlay.style.background = '#000';
+			loadingOverlay.style.background = 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)';
 			loadingOverlay.style.zIndex = '99999';
-			loadingOverlay.style.overflow = 'hidden';
+			loadingOverlay.style.display = 'flex';
+			loadingOverlay.style.flexDirection = 'column';
+			loadingOverlay.style.justifyContent = 'center';
+			loadingOverlay.style.alignItems = 'center';
+			loadingOverlay.style.fontFamily = 'system-ui, -apple-system, sans-serif';
 
-			// Create the image element
-			const img = document.createElement('img');
-			img.src = 'https://cf.browser-use.com/logo.svg';
-			img.alt = 'Browser-Use';
-			img.style.width = '200px';
-			img.style.height = 'auto';
-			img.style.position = 'absolute';
-			img.style.left = '0px';
-			img.style.top = '0px';
-			img.style.zIndex = '2';
-			img.style.opacity = '0.8';
+			// Create the main title
+			const title = document.createElement('h1');
+			title.textContent = 'WhiskyBA';
+			title.style.fontSize = '4rem';
+			title.style.fontWeight = '700';
+			title.style.color = '#ffffff';
+			title.style.margin = '0 0 1rem 0';
+			title.style.textShadow = '0 4px 8px rgba(0,0,0,0.5)';
+			title.style.letterSpacing = '0.1em';
 
-			loadingOverlay.appendChild(img);
+			// Create the subtitle
+			const subtitle = document.createElement('p');
+			subtitle.textContent = 'Browser Automation Agent';
+			subtitle.style.fontSize = '1.2rem';
+			subtitle.style.color = '#cccccc';
+			subtitle.style.margin = '0 0 2rem 0';
+			subtitle.style.fontWeight = '300';
+
+			// Create the status text
+			const status = document.createElement('p');
+			status.textContent = `Starting agent ${browser_session_label}...`;
+			status.style.fontSize = '1rem';
+			status.style.color = '#999999';
+			status.style.margin = '0';
+			status.style.fontWeight = '400';
+
+			// Add elements to overlay
+			loadingOverlay.appendChild(title);
+			loadingOverlay.appendChild(subtitle);
+			loadingOverlay.appendChild(status);
 			document.body.appendChild(loadingOverlay);
 
-			// DVD screensaver bounce logic
-			let x = Math.random() * (window.innerWidth - 300);
-			let y = Math.random() * (window.innerHeight - 300);
-			let dx = 1.2 + Math.random() * 0.4; // px per frame
-			let dy = 1.2 + Math.random() * 0.4;
-			// Randomize direction
-			if (Math.random() > 0.5) dx = -dx;
-			if (Math.random() > 0.5) dy = -dy;
-
-			function animate() {
-				const imgWidth = img.offsetWidth || 300;
-				const imgHeight = img.offsetHeight || 300;
-				x += dx;
-				y += dy;
-
-				if (x <= 0) {
-					x = 0;
-					dx = Math.abs(dx);
-				} else if (x + imgWidth >= window.innerWidth) {
-					x = window.innerWidth - imgWidth;
-					dx = -Math.abs(dx);
-				}
-				if (y <= 0) {
-					y = 0;
-					dy = Math.abs(dy);
-				} else if (y + imgHeight >= window.innerHeight) {
-					y = window.innerHeight - imgHeight;
-					dy = -Math.abs(dy);
-				}
-
-				img.style.left = `${x}px`;
-				img.style.top = `${y}px`;
-
-				requestAnimationFrame(animate);
-			}
-			animate();
-
-			// Responsive: update bounds on resize
-			window.addEventListener('resize', () => {
-				x = Math.min(x, window.innerWidth - img.offsetWidth);
-				y = Math.min(y, window.innerHeight - img.offsetHeight);
-			});
-
-			// Add a little CSS for smoothness
+			// Add CSS for better styling
 			const style = document.createElement('style');
 			style.innerHTML = `
-				#pretty-loading-animation {
-					/*backdrop-filter: blur(2px) brightness(0.9);*/
+				#whiskyba-loading-screen {
+					user-select: none;
+					pointer-events: none;
 				}
-				#pretty-loading-animation img {
+				#whiskyba-loading-screen * {
 					user-select: none;
 					pointer-events: none;
 				}
