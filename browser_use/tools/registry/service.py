@@ -8,6 +8,7 @@ from inspect import Parameter, iscoroutinefunction, signature
 from types import UnionType
 from typing import Any, Generic, Optional, TypeVar, Union, get_args, get_origin
 
+import pyotp
 from pydantic import BaseModel, Field, RootModel, create_model
 
 from browser_use.browser import BrowserSession
@@ -353,6 +354,10 @@ class Registry(Generic[Context]):
 				'file_system': file_system,
 			}
 
+			# Only pass sensitive_data to actions that explicitly need it (input_text)
+			if action_name == 'input_text':
+				special_context['sensitive_data'] = sensitive_data
+
 			# Add CDP-related parameters if browser_session is available
 			if browser_session:
 				# Add page_url
@@ -433,10 +438,17 @@ class Registry(Generic[Context]):
 		def recursively_replace_secrets(value: str | dict | list) -> str | dict | list:
 			if isinstance(value, str):
 				matches = secret_pattern.findall(value)
-
+				# check if the placeholder key, like x_password is in the output parameters of the LLM and replace it with the sensitive data
 				for placeholder in matches:
 					if placeholder in applicable_secrets:
-						value = value.replace(f'<secret>{placeholder}</secret>', applicable_secrets[placeholder])
+						# generate a totp code if secret is a 2fa secret
+						if 'bu_2fa_code' in placeholder:
+							totp = pyotp.TOTP(applicable_secrets[placeholder], digits=6)
+							replacement_value = totp.now()
+						else:
+							replacement_value = applicable_secrets[placeholder]
+
+						value = value.replace(f'<secret>{placeholder}</secret>', replacement_value)
 						replaced_placeholders.add(placeholder)
 					else:
 						# Keep track of missing placeholders

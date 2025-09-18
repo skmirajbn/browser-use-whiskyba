@@ -2,6 +2,7 @@
 
 
 from browser_use.dom.serializer.clickable_elements import ClickableElementDetector
+from browser_use.dom.serializer.paint_order import PaintOrderRemover
 from browser_use.dom.utils import cap_text_length
 from browser_use.dom.views import (
 	DOMRect,
@@ -40,6 +41,7 @@ class DOMTreeSerializer:
 		previous_cached_state: SerializedDOMState | None = None,
 		enable_bbox_filtering: bool = True,
 		containment_threshold: float | None = None,
+		paint_order_filtering: bool = True,
 	):
 		self.root_node = root_node
 		self._interactive_counter = 1
@@ -52,6 +54,8 @@ class DOMTreeSerializer:
 		# Bounding box filtering configuration
 		self.enable_bbox_filtering = enable_bbox_filtering
 		self.containment_threshold = containment_threshold or self.DEFAULT_CONTAINMENT_THRESHOLD
+		# Paint order filtering configuration
+		self.paint_order_filtering = paint_order_filtering
 
 	def serialize_accessible_elements(self) -> tuple[SerializedDOMState, dict[str, float]]:
 		import time
@@ -70,15 +74,18 @@ class DOMTreeSerializer:
 		end_step1 = time.time()
 		self.timing_info['create_simplified_tree'] = end_step1 - start_step1
 
-		# Step 2: Optimize tree (remove unnecessary parents)
+		# Step 2: Remove elements based on paint order
+		start_step3 = time.time()
+		if self.paint_order_filtering and simplified_tree:
+			PaintOrderRemover(simplified_tree).calculate_paint_order()
+		end_step3 = time.time()
+		self.timing_info['calculate_paint_order'] = end_step3 - start_step3
+
+		# Step 3: Optimize tree (remove unnecessary parents)
 		start_step2 = time.time()
 		optimized_tree = self._optimize_tree(simplified_tree)
 		end_step2 = time.time()
 		self.timing_info['optimize_tree'] = end_step2 - start_step2
-
-		# # Step 3: Detect and group semantic elements
-		# if optimized_tree:
-		#   self._detect_semantic_groups(optimized_tree)
 
 		# Step 3: Apply bounding box filtering (NEW)
 		if self.enable_bbox_filtering and optimized_tree:
@@ -117,26 +124,29 @@ class DOMTreeSerializer:
 
 		return self._clickable_cache[node.node_id]
 
-	def _create_simplified_tree(self, node: EnhancedDOMTreeNode) -> SimplifiedNode | None:
+	def _create_simplified_tree(self, node: EnhancedDOMTreeNode, depth: int = 0) -> SimplifiedNode | None:
 		"""Step 1: Create a simplified tree with enhanced element detection."""
 
 		if node.node_type == NodeType.DOCUMENT_NODE:
 			# for all cldren including shadow roots
 			for child in node.children_and_shadow_roots:
-				simplified_child = self._create_simplified_tree(child)
+				simplified_child = self._create_simplified_tree(child, depth + 1)
 				if simplified_child:
 					return simplified_child
 
 			return None
 
 		if node.node_type == NodeType.DOCUMENT_FRAGMENT_NODE:
-			# Super simple pass-through for shadow DOM elements
+			# ENHANCED shadow DOM processing - always include shadow content
 			simplified = SimplifiedNode(original_node=node, children=[])
 			for child in node.children_and_shadow_roots:
-				simplified_child = self._create_simplified_tree(child)
+				simplified_child = self._create_simplified_tree(child, depth + 1)
 				if simplified_child:
 					simplified.children.append(simplified_child)
-			return simplified
+
+			# Always return shadow DOM fragments, even if children seem empty
+			# Shadow DOM often contains the actual interactive content in SPAs
+			return simplified if simplified.children else SimplifiedNode(original_node=node, children=[])
 
 		elif node.node_type == NodeType.ELEMENT_NODE:
 			# Skip non-content elements
@@ -147,32 +157,35 @@ class DOMTreeSerializer:
 				if node.content_document:
 					simplified = SimplifiedNode(original_node=node, children=[])
 					for child in node.content_document.children_nodes or []:
-						simplified_child = self._create_simplified_tree(child)
-						if simplified_child:
+						simplified_child = self._create_simplified_tree(child, depth + 1)
+						if simplified_child is not None:
 							simplified.children.append(simplified_child)
 					return simplified
 
-			# Use enhanced scoring for inclusion decision
-			is_interactive = self._is_interactive_cached(node)
-
-			is_visible = node.snapshot_node and node.is_visible
+			is_visible = node.is_visible
 			is_scrollable = node.is_actually_scrollable
+			has_shadow_content = bool(node.children_and_shadow_roots)
 
-			# Include if interactive (regardless of visibility), or scrollable, or has children to process
-			should_include = (is_interactive and is_visible) or is_scrollable or bool(node.children_and_shadow_roots)
+			# ENHANCED SHADOW DOM DETECTION: Include shadow hosts even if not visible
+			is_shadow_host = any(child.node_type == NodeType.DOCUMENT_FRAGMENT_NODE for child in node.children_and_shadow_roots)
 
-			if should_include:
-				simplified = SimplifiedNode(original_node=node, children=[])
-				# simplified._analysis = analysis  # Store analysis for grouping
+			# Include if interactive (regardless of visibility), scrollable, has children, or is shadow host
+			if is_visible or is_scrollable or has_shadow_content or is_shadow_host:
+				simplified = SimplifiedNode(original_node=node, children=[], is_shadow_host=is_shadow_host)
 
-				# Process children
+				# Process ALL children including shadow roots with enhanced logging
 				for child in node.children_and_shadow_roots:
-					simplified_child = self._create_simplified_tree(child)
+					simplified_child = self._create_simplified_tree(child, depth + 1)
 					if simplified_child:
 						simplified.children.append(simplified_child)
 
+				# SHADOW DOM SPECIAL CASE: Always include shadow hosts even if not visible
+				# Many SPA frameworks (React, Vue) render content in shadow DOM
+				if is_shadow_host and simplified.children:
+					return simplified
+
 				# Return if meaningful or has meaningful children
-				if (is_interactive and is_visible) or is_scrollable or simplified.children:
+				if is_visible or is_scrollable or simplified.children:
 					return simplified
 
 		elif node.node_type == NodeType.TEXT_NODE:
@@ -202,7 +215,7 @@ class DOMTreeSerializer:
 		is_visible = node.original_node.snapshot_node and node.original_node.is_visible
 
 		if (
-			(is_interactive_opt and is_visible)  # Only keep interactive nodes that are visible
+			is_visible  # Keep all visible nodes
 			or node.original_node.is_actually_scrollable
 			or node.original_node.node_type == NodeType.TEXT_NODE
 			or node.children
@@ -228,8 +241,8 @@ class DOMTreeSerializer:
 		if not node:
 			return
 
-		# Skip assigning index to excluded nodes
-		if not (hasattr(node, 'excluded_by_parent') and node.excluded_by_parent):
+		# Skip assigning index to excluded nodes, or ignored by paint order
+		if not node.excluded_by_parent and not node.ignored_by_paint_order:
 			# Assign index to clickable elements that are also visible
 			is_interactive_assign = self._is_interactive_cached(node.original_node)
 			is_visible = node.original_node.snapshot_node and node.original_node.is_visible
@@ -446,23 +459,34 @@ class DOMTreeSerializer:
 				# Build attributes string
 				attributes_html_str = DOMTreeSerializer._build_attributes_string(node.original_node, include_attributes, '')
 
-				# Build the line
+				# Build the line with shadow host indicator
+				shadow_prefix = ''
+				if node.is_shadow_host:
+					# Check if any shadow children are closed
+					has_closed_shadow = any(
+						child.original_node.node_type == NodeType.DOCUMENT_FRAGMENT_NODE
+						and child.original_node.shadow_root_type
+						and child.original_node.shadow_root_type.lower() == 'closed'
+						for child in node.children
+					)
+					shadow_prefix = '|SHADOW(closed)|' if has_closed_shadow else '|SHADOW(open)|'
+
 				if should_show_scroll and node.interactive_index is None:
 					# Scrollable container but not clickable
-					line = f'{depth_str}|SCROLL|<{node.original_node.tag_name}'
+					line = f'{depth_str}{shadow_prefix}|SCROLL|<{node.original_node.tag_name}'
 				elif node.interactive_index is not None:
 					# Clickable (and possibly scrollable)
 					new_prefix = '*' if node.is_new else ''
 					scroll_prefix = '|SCROLL+' if should_show_scroll else '['
-					line = f'{depth_str}{new_prefix}{scroll_prefix}{node.interactive_index}]<{node.original_node.tag_name}'
+					line = f'{depth_str}{shadow_prefix}{new_prefix}{scroll_prefix}{node.interactive_index}]<{node.original_node.tag_name}'
 				elif node.original_node.tag_name.upper() == 'IFRAME':
 					# Iframe element (not interactive)
-					line = f'{depth_str}|IFRAME|<{node.original_node.tag_name}'
+					line = f'{depth_str}{shadow_prefix}|IFRAME|<{node.original_node.tag_name}'
 				elif node.original_node.tag_name.upper() == 'FRAME':
 					# Frame element (not interactive)
-					line = f'{depth_str}|FRAME|<{node.original_node.tag_name}'
+					line = f'{depth_str}{shadow_prefix}|FRAME|<{node.original_node.tag_name}'
 				else:
-					line = f'{depth_str}<{node.original_node.tag_name}'
+					line = f'{depth_str}{shadow_prefix}<{node.original_node.tag_name}'
 
 				if attributes_html_str:
 					line += f' {attributes_html_str}'
@@ -477,6 +501,25 @@ class DOMTreeSerializer:
 
 				formatted_text.append(line)
 
+		elif node.original_node.node_type == NodeType.DOCUMENT_FRAGMENT_NODE:
+			# Shadow DOM representation - show clearly to LLM
+			if node.original_node.shadow_root_type and node.original_node.shadow_root_type.lower() == 'closed':
+				formatted_text.append(f'{depth_str}▼ Shadow Content (Closed)')
+			else:
+				formatted_text.append(f'{depth_str}▼ Shadow Content (Open)')
+
+			next_depth += 1
+
+			# Process shadow DOM children
+			for child in node.children:
+				child_text = DOMTreeSerializer.serialize_tree(child, include_attributes, next_depth)
+				if child_text:
+					formatted_text.append(child_text)
+
+			# Close shadow DOM indicator
+			if node.children:  # Only show close if we had content
+				formatted_text.append(f'{depth_str}▲ Shadow Content End')
+
 		elif node.original_node.node_type == NodeType.TEXT_NODE:
 			# Include visible text
 			is_visible = node.original_node.snapshot_node and node.original_node.is_visible
@@ -489,11 +532,12 @@ class DOMTreeSerializer:
 				clean_text = node.original_node.node_value.strip()
 				formatted_text.append(f'{depth_str}{clean_text}')
 
-		# Process children
-		for child in node.children:
-			child_text = DOMTreeSerializer.serialize_tree(child, include_attributes, next_depth)
-			if child_text:
-				formatted_text.append(child_text)
+		# Process children (for non-shadow elements)
+		if node.original_node.node_type != NodeType.DOCUMENT_FRAGMENT_NODE:
+			for child in node.children:
+				child_text = DOMTreeSerializer.serialize_tree(child, include_attributes, next_depth)
+				if child_text:
+					formatted_text.append(child_text)
 
 		return '\n'.join(formatted_text)
 

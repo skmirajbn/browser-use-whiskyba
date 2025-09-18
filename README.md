@@ -14,29 +14,31 @@
 [![Twitter Follow](https://img.shields.io/twitter/follow/Magnus?style=social)](https://x.com/intent/user?screen_name=mamagnus00)
 [![Weave Badge](https://img.shields.io/endpoint?url=https%3A%2F%2Fapp.workweave.ai%2Fapi%2Frepository%2Fbadge%2Forg_T5Pvn3UBswTHIsN1dWS3voPg%2F881458615&labelColor=#EC6341)](https://app.workweave.ai/reports/repository/org_T5Pvn3UBswTHIsN1dWS3voPg/881458615)
 
+<!-- Keep these links. Translations will automatically update with the README. -->
+[Deutsch](https://www.readme-i18n.com/browser-use/browser-use?lang=de) | 
+[Español](https://www.readme-i18n.com/browser-use/browser-use?lang=es) | 
+[français](https://www.readme-i18n.com/browser-use/browser-use?lang=fr) | 
+[日本語](https://www.readme-i18n.com/browser-use/browser-use?lang=ja) | 
+[한국어](https://www.readme-i18n.com/browser-use/browser-use?lang=ko) | 
+[Português](https://www.readme-i18n.com/browser-use/browser-use?lang=pt) | 
+[Русский](https://www.readme-i18n.com/browser-use/browser-use?lang=ru) | 
+[中文](https://www.readme-i18n.com/browser-use/browser-use?lang=zh)
+
 🌤️ Want to skip the setup? Use our <b>[cloud](https://cloud.browser-use.com)</b> for faster, scalable, stealth-enabled browser automation!
 
-## 🎉 OSS Twitter Hackathon
+**🚀 Use the latest version!** 
 
-We just hit **69,000 GitHub ⭐**!
-To celebrate, we're launching **#nicehack69** — a Twitter-first hackathon with a **$6,900 prize pool**. Dream big and show us the future of browser-use agents that go beyond demos!
+> We ship every day improvements for **speed**, **accuracy**, and **UX**. 
+> ```bash
+> uv pip install --upgrade browser-use
+> ```
 
-**Deadline: September 6, 2025**
+# 🤖 Quickstart
 
-**[🚀 Join the hackathon →](https://github.com/browser-use/nicehack69)**
-
-<div align="center">
-<a href="https://github.com/browser-use/nicehack69">
-<img src="./static/NiceHack69.png" alt="NiceHack69 Hackathon" width="600"/>
-</a>
-</div>
-
-# Quickstart
-
-With pip (Python>=3.11):
+With uv (Python>=3.11):
 
 ```bash
-pip install browser-use
+uv pip install browser-use
 ```
 
 If you don't already have Chrome or Chromium installed, you can also download the latest Chromium using playwright's install shortcut:
